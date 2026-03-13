@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor
+import xgboost as xgb # <-- Nouvel import
 import numpy as np
 import json
 import urllib.request
@@ -17,7 +17,6 @@ st.title("Tableau de Bord Interactif : Électromobilité en France")
 @st.cache_data
 def load_data():
     # 1. VE (Véhicules)
-    
     df_ve = pd.read_parquet('vehicules_electriques.parquet')
     
     # 2. Typologie
@@ -32,7 +31,7 @@ def load_data():
     except:
         df_pc = pd.DataFrame()
 
-    # 4. Ratio par département (s'il existe, sinon on le calculera à la volée)
+    # 4. Ratio par département
     try:
         df_ratio = pd.read_csv('ratio_par_departement.csv')
     except:
@@ -54,12 +53,12 @@ with st.spinner("Chargement des données..."):
 tab1, tab2, tab3, tab4 = st.tabs([
     "Tendance Flotte VE", 
     "Typologie des Bornes", 
-    "Diagnostic IA interactif",
+    "Diagnostic IA (XGBoost)", # <-- Nom mis à jour
     "Carte Animée Ratio"
 ])
 
 # =========================================================
-# ONGLET 1 : TENDANCE FLOTTE VE (Interactif)
+# ONGLET 1 : TENDANCE FLOTTE VE
 # =========================================================
 with tab1:
     st.header("Évolution de la flotte de Véhicules Électriques")
@@ -98,7 +97,7 @@ with tab1:
         st.plotly_chart(fig1, use_container_width=True)
 
 # =========================================================
-# ONGLET 2 : TYPOLOGIE DES BORNES (Interactif)
+# ONGLET 2 : TYPOLOGIE DES BORNES
 # =========================================================
 with tab2:
     st.header("Répartition des points de charge par type")
@@ -125,13 +124,14 @@ with tab2:
         st.plotly_chart(fig2, use_container_width=True)
 
 # =========================================================
-# ONGLET 3 : DIAGNOSTIC IA (Interactif)
+# ONGLET 3 : DIAGNOSTIC IA (XGBoost)
 # =========================================================
 with tab3:
-    st.header("Diagnostic Territorial IA (Random Forest)")
-    st.markdown("Survolez les points pour voir les détails de chaque département.")
+    st.header("Diagnostic Territorial IA (XGBoost)")
+    st.markdown("Comparaison entre le parc de Véhicules Électriques et l'infrastructure de recharge.")
     
     if not df_ve.empty and not df_pc.empty:
+        # 1. Préparation des données (Identique à ton script)
         def get_dept(c):
             if pd.isna(c): return 'UNK'
             c = str(c)
@@ -163,30 +163,70 @@ with tab3:
         df = pd.merge(df_ve_agg, df_pc_history, on=['dept', 'DATE_ARRETE'], how='inner')
         df.rename(columns={'nbre_pdc': 'nb_pdc'}, inplace=True)
         df['nb_pdc'] = df['nb_pdc'].fillna(0)
+        df = df[df['dept'] != '00']
 
-        X_rf = df[['NB_VP_RECHARGEABLES_EL']]
-        y_rf = df['nb_pdc']
-        rf = RandomForestRegressor(n_estimators=100, random_state=42).fit(X_rf, y_rf)
-        df['pred_pdc'] = rf.predict(X_rf)
-        df['ecart'] = df['nb_pdc'] - df['pred_pdc']
-        
-        df['Statut'] = np.where(df['ecart'] > 0, "En avance", "En retard")
-
+        # 2. Modèle XGBoost
         last_date = df['DATE_ARRETE'].max()
-        df_analyse = df[df['DATE_ARRETE'] == last_date]
+        df_analyse = df[df['DATE_ARRETE'] == last_date].copy()
 
+        # Entraînement SANS Paris (75)
+        df_train = df_analyse[df_analyse['dept'] != '75'].copy()
+        X_train = df_train[['NB_VP_RECHARGEABLES_EL']]
+        y_train = df_train['nb_pdc']
+
+        X_all = df_analyse[['NB_VP_RECHARGEABLES_EL']]
+        y_all = df_analyse['nb_pdc']
+
+        xgb_model = xgb.XGBRegressor(n_estimators=100, learning_rate=0.05, max_depth=3, random_state=42)
+        xgb_model.fit(X_train, y_train)
+
+        df_analyse['pred_pdc_xgb'] = xgb_model.predict(X_all)
+        df_analyse['ecart_xgb'] = df_analyse['nb_pdc'] - df_analyse['pred_pdc_xgb']
+
+        # 3. Graphique Plotly interactif
         fig3 = px.scatter(df_analyse, x='NB_VP_RECHARGEABLES_EL', y='nb_pdc', 
-                          color='ecart', size=abs(df_analyse['ecart']),
+                          color='ecart_xgb', size=abs(df_analyse['ecart_xgb']),
                           hover_name='dept',
-                          hover_data={'ecart': ':.0f', 'pred_pdc': ':.0f'},
+                          hover_data={'ecart_xgb': ':.0f', 'pred_pdc_xgb': ':.0f'},
                           color_continuous_scale='RdYlGn',
-                          labels={'NB_VP_RECHARGEABLES_EL': 'Nb Véhicules Électriques', 'nb_pdc': 'Nb Bornes Réelles', 'ecart': 'Écart vs Modèle'},
-                          title="Comparaison Réalité vs Prédiction IA par Département")
+                          labels={'NB_VP_RECHARGEABLES_EL': 'Parc de Voitures Électriques', 
+                                  'nb_pdc': 'Nb Bornes Réelles', 
+                                  'ecart_xgb': 'Écart vs Modèle'},
+                          title=f"Diagnostic Territorial IA (XGBoost) au {last_date.date()}")
         
-        fig3.add_trace(go.Scatter(x=df_analyse['NB_VP_RECHARGEABLES_EL'], y=df_analyse['pred_pdc'], 
-                                  mode='lines', name='Tendance IA', line=dict(color='rgba(0,0,0,0.3)', dash='dash')))
+        # Ajout de la courbe "Norme Nationale" (Ligne Bleue)
+        x_virtuel = pd.DataFrame({'NB_VP_RECHARGEABLES_EL': np.linspace(df_analyse['NB_VP_RECHARGEABLES_EL'].min(), df_analyse['NB_VP_RECHARGEABLES_EL'].max(), 500)})
+        y_virtuel = xgb_model.predict(x_virtuel)
+        
+        fig3.add_trace(go.Scatter(x=x_virtuel['NB_VP_RECHARGEABLES_EL'], y=y_virtuel, 
+                                  mode='lines', name='Norme Nationale', 
+                                  line=dict(color='blue', width=3)))
+
+        # Limitation de l'axe Y pour ne pas écraser à cause de Paris
+        ymax = max(df_analyse[df_analyse['dept'] != '75']['nb_pdc'].max() * 1.5, 5000)
+        fig3.update_layout(yaxis_range=[-500, ymax])
         
         st.plotly_chart(fig3, use_container_width=True)
+
+        # 4. Affichage des Top 5 en Dataframes
+        st.divider()
+        col1, col2 = st.columns(2)
+        
+        # Mise en forme pour l'affichage
+        df_display = df_analyse[['dept', 'NB_VP_RECHARGEABLES_EL', 'nb_pdc', 'pred_pdc_xgb', 'ecart_xgb']].copy()
+        df_display['pred_pdc_xgb'] = df_display['pred_pdc_xgb'].astype(int)
+        df_display['ecart_xgb'] = df_display['ecart_xgb'].astype(int)
+        df_display.columns = ['Département', 'Nb Véhicules', 'Nb Bornes', 'Prédiction IA', 'Écart']
+
+        with col1:
+            st.subheader("🟢 Top 5 : Départements les plus surdotés")
+            top_avance = df_display.sort_values('Écart', ascending=False).head(5)
+            st.dataframe(top_avance, hide_index=True, use_container_width=True)
+
+        with col2:
+            st.subheader("🔴 Top 5 : Départements les plus sous-dotés")
+            top_retard = df_display.sort_values('Écart').head(5)
+            st.dataframe(top_retard, hide_index=True, use_container_width=True)
 
 # =========================================================
 # ONGLET 4 : CARTE ANIMÉE RATIO
@@ -194,20 +234,16 @@ with tab3:
 with tab4:
     st.header("Évolution du Ratio : Nombre de VE pour 1 Point de Charge")
     
-    # Si le fichier ratio n'existe pas, on le recalcule en direct à partir des DataFrames de l'onglet 3
     if df_ratio.empty and not df_ve.empty and not df_pc.empty:
-        # On utilise le 'df' fusionné qu'on a créé dans l'onglet 3
         df_ratio = df.copy()
         df_ratio['ratio'] = np.where(df_ratio['nb_pdc'] > 0, df_ratio['NB_VP_RECHARGEABLES_EL'] / df_ratio['nb_pdc'], 0)
         df_ratio['date'] = df_ratio['DATE_ARRETE'].astype(str)
 
     if not df_ratio.empty:
-        # Nettoyage pour la carte
         df_ratio['dept'] = df_ratio['dept'].apply(lambda x: str(x).zfill(2) if len(str(x)) < 3 else str(x))
         if 'date_str' not in df_ratio.columns:
             df_ratio['date_str'] = df_ratio['date'].astype(str).str[:10]
 
-        # Création de la Carte Animée
         fig4 = px.choropleth(
             df_ratio.sort_values('date'), 
             geojson=departements_geo, 
@@ -221,10 +257,9 @@ with tab4:
             labels={'ratio': 'Ratio (VE / Borne)', 'date_str': 'Date'}
         )
 
-        # Ajustements esthétiques pour centrer sur la France
         fig4.update_geos(fitbounds="locations", visible=False)
         fig4.update_layout(margin={"r":0,"t":50,"l":0,"b":0})
 
         st.plotly_chart(fig4, use_container_width=True)
     else:
-        st.warning("Impossible de générer la carte : Données des véhicules ou des bornes manquantes.")
+        st.warning("Impossible de générer la carte : Données manquantes.")
