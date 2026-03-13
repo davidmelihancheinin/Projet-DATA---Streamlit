@@ -213,7 +213,7 @@ with tab3:
         st.divider()
         
         st.info("""
-        💡 **Comment lire ces résultats ?**
+        **Comment lire ces résultats ?**
         * **Prédiction IA :** Le nombre de bornes théoriquement nécessaires selon le modèle, calculé en fonction du parc de véhicules du département.
         * **Écart (Volume) :** La différence brute entre les bornes réelles et la prédiction. 
         * **Écart (%) :** L'écart ramené en pourcentage. Un écart de +20% signifie que le département a 20% de bornes en PLUS par rapport à ce que l'IA attendait.
