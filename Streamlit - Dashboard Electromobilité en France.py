@@ -192,7 +192,8 @@ with tab3:
                           labels={'NB_VP_RECHARGEABLES_EL': 'Parc de Voitures Électriques', 
                                   'nb_pdc': 'Nb Bornes Réelles', 
                                   'ecart_xgb': 'Écart vs Modèle'},
-                          title=f"Diagnostic Territorial IA (XGBoost) au {last_date.date()}")
+                          # C'EST CETTE LIGNE QU'IL FAUT CHANGER :
+                          title=f"Diagnostic Territorial IA (XGBoost) au {str(last_date)[:10]}")
         
         # Ajout de la courbe "Norme Nationale" (Ligne Bleue)
         x_virtuel = pd.DataFrame({'NB_VP_RECHARGEABLES_EL': np.linspace(df_analyse['NB_VP_RECHARGEABLES_EL'].min(), df_analyse['NB_VP_RECHARGEABLES_EL'].max(), 500)})
