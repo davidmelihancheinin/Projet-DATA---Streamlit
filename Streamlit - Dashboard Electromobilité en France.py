@@ -18,7 +18,7 @@ st.title("Tableau de Bord Interactif : Électromobilité en France")
 def load_data():
     # 1. VE (Véhicules)
     
-        df_ve = pd.read_parquet('vehicules_electriques.parquet')
+    df_ve = pd.read_parquet('vehicules_electriques.parquet')
     
     # 2. Typologie
     try:
