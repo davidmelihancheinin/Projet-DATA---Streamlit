@@ -17,10 +17,8 @@ st.title("Tableau de Bord Interactif : Électromobilité en France")
 @st.cache_data
 def load_data():
     # 1. VE (Véhicules)
-    try:
-        df_ve = pd.read_csv('AAA_OPENDATA_RECHARGEABLE_2025-11-24.csv', encoding='utf-8', low_memory=False)
-    except:
-        df_ve = pd.read_csv('AAA_OPENDATA_RECHARGEABLE_2025-11-24.csv', encoding='latin1', low_memory=False)
+    
+        df_ve = pd.read_parquet('vehicules_electriques.parquet')
     
     # 2. Typologie
     try:
