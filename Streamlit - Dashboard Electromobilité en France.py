@@ -211,22 +211,53 @@ with tab3:
 
         # 4. Affichage des Top 5 en Dataframes
         st.divider()
-        col1, col2 = st.columns(2)
+        
+        st.info("""
+        💡 **Comment lire ces résultats ?**
+        * **Prédiction IA :** Le nombre de bornes théoriquement nécessaires selon le modèle, calculé en fonction du parc de véhicules du département.
+        * **Écart (Volume) :** La différence brute entre les bornes réelles et la prédiction. 
+        * **Écart (%) :** L'écart ramené en pourcentage. Un écart de +20% signifie que le département a 20% de bornes en PLUS par rapport à ce que l'IA attendait.
+        """)
+        
+        # On extrait le dictionnaire { '01': 'Ain', '02': 'Aisne', ... } depuis le fichier geojson
+        dict_depts = {feat['properties']['code']: feat['properties']['nom'] for feat in departements_geo['features']}
         
         # Mise en forme pour l'affichage
         df_display = df_analyse[['dept', 'NB_VP_RECHARGEABLES_EL', 'nb_pdc', 'pred_pdc_xgb', 'ecart_xgb']].copy()
+        
+        # Ajout du nom du département
+        df_display['Nom_Dept'] = df_display['dept'].map(dict_depts).fillna('Inconnu')
+        
+        # Conversion en entiers
         df_display['pred_pdc_xgb'] = df_display['pred_pdc_xgb'].astype(int)
         df_display['ecart_xgb'] = df_display['ecart_xgb'].astype(int)
-        df_display.columns = ['Département', 'Nb Véhicules', 'Nb Bornes', 'Prédiction IA', 'Écart']
+        
+        # --- NOUVEAUTÉ : Calcul de l'écart en pourcentage ---
+        # Formule : (Ecart / Prédiction) * 100. On utilise np.where pour éviter de diviser par 0
+        df_display['ecart_pct'] = np.where(
+            df_display['pred_pdc_xgb'] > 0, 
+            (df_display['ecart_xgb'] / df_display['pred_pdc_xgb']) * 100, 
+            0
+        )
+        
+        # On formate le pourcentage pour l'affichage (ex: "+15.2 %" ou "-10.5 %")
+        df_display['ecart_pct'] = df_display['ecart_pct'].apply(lambda x: f"{x:+.1f} %")
+        
+        # Réorganisation et renommage final des colonnes
+        df_display = df_display[['dept', 'Nom_Dept', 'NB_VP_RECHARGEABLES_EL', 'nb_pdc', 'pred_pdc_xgb', 'ecart_xgb', 'ecart_pct']]
+        df_display.columns = ['Code', 'Département', 'Nb Véhicules', 'Nb Bornes', 'Prédiction IA', 'Écart (Vol)', 'Écart (%)']
 
+        col1, col2 = st.columns(2)
         with col1:
             st.subheader("🟢 Top 5 : Départements les plus surdotés")
-            top_avance = df_display.sort_values('Écart', ascending=False).head(5)
+            # On trie par le volume de l'écart (les plus positifs)
+            top_avance = df_display.sort_values('Écart (Vol)', ascending=False).head(5)
             st.dataframe(top_avance, hide_index=True, use_container_width=True)
 
         with col2:
             st.subheader("🔴 Top 5 : Départements les plus sous-dotés")
-            top_retard = df_display.sort_values('Écart').head(5)
+            # On trie par le volume de l'écart (les plus négatifs)
+            top_retard = df_display.sort_values('Écart (Vol)').head(5)
             st.dataframe(top_retard, hide_index=True, use_container_width=True)
 
 # =========================================================
