@@ -11,9 +11,6 @@ import urllib.request
 st.set_page_config(page_title="Dashboard Interactif Électromobilité", layout="wide")
 st.title("Tableau de Bord Interactif : Électromobilité en France")
 
-# =========================================================
-# CHARGEMENT DES DONNÉES EN CACHE
-# =========================================================
 @st.cache_data
 def load_data():
     # 1. VE (Véhicules)
@@ -57,9 +54,8 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "Carte Animée Ratio"
 ])
 
-# =========================================================
-# ONGLET 1 : TENDANCE FLOTTE VE
-# =========================================================
+# Onglet 1
+
 with tab1:
     st.header("Évolution de la flotte de Véhicules Électriques")
     
@@ -96,9 +92,8 @@ with tab1:
         fig1.update_layout(title="Évolution et Prédiction des VE", xaxis_title="Date", yaxis_title="Nombre de VE", hovermode="x unified")
         st.plotly_chart(fig1, use_container_width=True)
 
-# =========================================================
-# ONGLET 2 : TYPOLOGIE DES BORNES
-# =========================================================
+# Onglet 2
+
 with tab2:
     st.header("Répartition des points de charge par type")
     
@@ -123,9 +118,8 @@ with tab2:
             
         st.plotly_chart(fig2, use_container_width=True)
 
-# =========================================================
-# ONGLET 3 : DIAGNOSTIC IA (XGBoost)
-# =========================================================
+# Onglet 3
+
 with tab3:
     st.header("Diagnostic Territorial IA (XGBoost)")
     st.markdown("Comparaison entre le parc de Véhicules Électriques et l'infrastructure de recharge.")
@@ -260,9 +254,8 @@ with tab3:
             top_retard = df_display.sort_values('Écart (Vol)').head(5)
             st.dataframe(top_retard, hide_index=True, use_container_width=True)
 
-# =========================================================
-# ONGLET 4 : CARTE ANIMÉE RATIO
-# =========================================================
+# Onglet 4
+
 with tab4:
     st.header("Évolution du Ratio : Nombre de VE pour 1 Point de Charge")
     
